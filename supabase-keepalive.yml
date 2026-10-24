@@ -1,0 +1,38 @@
+# Keeps the free Supabase project for The Pavilia Forest from being paused.
+# Supabase pauses free projects after about a week with little activity; this job
+# makes a couple of small API requests every 2 days, and writes the date to
+# last-ping.txt so GitHub also sees the repository as active (GitHub stops
+# scheduled jobs in repositories with no activity for 60 days).
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "17 3 */2 * *"   # every 2 days at 03:17 UTC (11:17 Hong Kong time)
+  workflow_dispatch: {}       # lets you press "Run workflow" by hand
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: https://cfrhwgmltdhkhhkiaxhy.supabase.co
+          # the publishable key is public by design (it is already inside the game's web page)
+          SUPABASE_KEY: sb_publishable_wTGpL4CTA1xAFj0baRC4yg_kXU8Irdo
+        run: |
+          code1=$(curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_KEY")
+          code2=$(curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/auth/v1/health" -H "apikey: $SUPABASE_KEY")
+          echo "REST API: $code1   Auth: $code2"
+          if [ "$code1" = "000" ] && [ "$code2" = "000" ]; then echo "Supabase could not be reached"; exit 1; fi
+      - name: Note the date
+        run: |
+          date -u +"%Y-%m-%d %H:%M UTC" > last-ping.txt
+          git config user.name "keepalive-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last-ping.txt
+          git commit -m "Supabase keep-alive ping" || echo "nothing to commit"
+          git push
